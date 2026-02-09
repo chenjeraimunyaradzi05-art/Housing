@@ -1,0 +1,120 @@
+{/* Colors.mdx */}
+
+# Color System
+
+VÖR's color palette is carefully crafted to evoke sophistication, trust, growth, and prosperity - values that resonate with our women-centered real estate platform.
+
+## Brand Colors
+
+### Rose (Primary)
+Sophistication & femininity - Used for primary actions and key interactive elements.
+
+| Shade | Hex |
+|-------|-----|
+| 50 | #fff1f2 |
+| 100 | #ffe4e6 |
+| 200 | #fecdd3 |
+| 300 | #fda4af |
+| 400 | #fb7185 |
+| 500 | #f43f5e |
+| 600 | #e11d48 |
+| 700 | #be123c |
+| 800 | #9f1239 |
+| 900 | #881337 |
+
+### Lavender (Secondary)
+Calm & trust - Used for secondary actions and supporting elements.
+
+| Shade | Hex |
+|-------|-----|
+| 50 | #faf5ff |
+| 100 | #f3e8ff |
+| 200 | #e9d5ff |
+| 300 | #d8b4fe |
+| 400 | #c084fc |
+| 500 | #a855f7 |
+| 600 | #9333ea |
+| 700 | #7e22ce |
+| 800 | #6b21a8 |
+| 900 | #581c87 |
+
+### Teal (Accent)
+Growth & stability - Used for success states and positive indicators.
+
+| Shade | Hex |
+|-------|-----|
+| 50 | #f0fdfa |
+| 100 | #ccfbf1 |
+| 200 | #99f6e4 |
+| 300 | #5eead4 |
+| 400 | #2dd4bf |
+| 500 | #14b8a6 |
+| 600 | #0d9488 |
+| 700 | #0f766e |
+| 800 | #115e59 |
+| 900 | #134e4a |
+
+### Gold (Highlight)
+Prosperity & success - Used for premium features and highlights.
+
+| Shade | Hex |
+|-------|-----|
+| 50 | #fefce8 |
+| 100 | #fef9c3 |
+| 200 | #fef08a |
+| 300 | #fde047 |
+| 400 | #facc15 |
+| 500 | #eab308 |
+| 600 | #ca8a04 |
+| 700 | #a16207 |
+| 800 | #854d0e |
+| 900 | #713f12 |
+
+## Semantic Colors
+
+| Color | Default | Light | Purpose |
+|-------|---------|-------|---------|
+| Success | #10b981 | #d1fae5 | Positive actions & states |
+| Warning | #f59e0b | #fef3c7 | Caution & attention |
+| Error | #ef4444 | #fee2e2 | Errors & destructive actions |
+| Info | #3b82f6 | #dbeafe | Information & neutral |
+
+## Usage Guidelines
+
+### Do's
+- ✅ Use Rose (500) for primary CTAs and important interactive elements
+- ✅ Use Lavender for secondary actions and hover states
+- ✅ Use Teal for success messages and positive metrics
+- ✅ Use Gold sparingly for premium features and highlights
+- ✅ Ensure sufficient contrast (4.5:1 minimum for text)
+
+### Don'ts
+- ❌ Don't use multiple primary colors in the same section
+- ❌ Don't use light colors (50-200) for text on white backgrounds
+- ❌ Don't mix too many accent colors in one component
+- ❌ Don't forget to test colors in both light and dark modes
+
+## CSS Variables
+
+All colors are available as CSS variables:
+
+```css
+/* Usage */
+color: var(--color-rose-500);
+background-color: var(--color-lavender-100);
+border-color: var(--color-teal-600);
+```
+
+## Tailwind Classes
+
+Use Tailwind utility classes for easy styling:
+
+```jsx
+<button className="bg-rose-500 hover:bg-rose-600 text-white">
+  Primary Button
+</button>
+
+<span className="text-teal-600">
+  +12.5% this year
+</span>
+```

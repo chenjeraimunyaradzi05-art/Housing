@@ -1,0 +1,2005 @@
+// VÖR Platform Database Schema
+// Prisma ORM for PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== USER & AUTHENTICATION ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  avatar        String?   // URL to avatar image
+  dateOfBirth   DateTime?
+  phone         String?
+  profileImage  String?   // URL to image in S3
+  bio           String?
+  location      String?   // City, State
+  country       String?
+
+  // Account status
+  status           String   @default("active") // "active", "suspended", "deleted"
+  emailVerified    DateTime?
+  phoneVerified    DateTime?
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?
+
+  // Profile verification
+  identityVerified   Boolean   @default(false)
+  identityVerifiedAt DateTime?
+  kycStatus          String    @default("pending") // "pending", "approved", "rejected"
+  kycApprovedAt      DateTime?
+
+  // Membership
+  membershipLevel     String    @default("free") // "free", "investor", "pro", "agent"
+  membershipExpiresAt DateTime?
+
+  // User type (can have multiple roles)
+  userType String[] @default(["individual"]) // ["individual", "agent", "lender", "sponsor"]
+
+  // Role for authorization
+  role String @default("user") // "user", "investor", "landlord", "admin"
+
+  // Refresh tokens for authentication
+  refreshTokens RefreshToken[]
+
+  // Co-Investment relations
+  managedPools   CoInvestmentPool[]     @relation("ManagedPools")
+  investments    CoInvestmentInvestor[]
+
+  // Social Relations
+  posts            Post[]           @relation("UserPosts")
+  comments         Comment[]
+  likes            Like[]
+  followedBy       Follow[]         @relation("UserFollowedBy")
+  following        Follow[]         @relation("UserFollows")
+
+  // Mentions (both directions)
+  mentionsMade     Mention[]        @relation("Mentioner")
+  mentionsReceived Mention[]        @relation("MentionedUser")
+
+  // Content Moderation
+  reportsSubmitted ContentReport[]  @relation("Reporter")
+  reportsReviewed  ContentReport[]  @relation("Reviewer")
+
+  // Community Relations
+  ownedGroups      CommunityGroup[] @relation("GroupOwner")
+  groupMemberships GroupMember[]
+
+  // Chat Relations
+  conversations    ConversationParticipant[]
+  messagesSent     Message[]
+
+  // Notification Relations
+  notifications    Notification[]
+
+  // Security & Compliance Relations
+  auditLogs              AuditLog[]
+  kycVerifications       KYCVerification[]
+  amlTransactions        AMLTransaction[]
+  amlAlerts              AMLAlert[]
+  consents               UserConsent[]
+  deletionRequests       AccountDeletionRequest[]
+  pushTokens             PushToken[]
+
+  // User Settings
+  settings UserSettings?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([username])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model VerificationToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  type      String   // "email_verification", "password_reset"
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+// User Settings for notifications, privacy, and preferences
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Email Notifications
+  emailMarketing        Boolean @default(true)
+  emailUpdates          Boolean @default(true)
+  emailSecurity         Boolean @default(true)
+  emailInvestmentAlerts Boolean @default(true)
+  emailCommunityDigest  Boolean @default(false)
+
+  // Push Notifications
+  pushEnabled           Boolean @default(false)
+  pushInvestmentAlerts  Boolean @default(true)
+  pushMessages          Boolean @default(true)
+
+  // Privacy
+  profileVisibility String  @default("public") // "public", "members", "private"
+  showInvestments   Boolean @default(false)
+  showLocation      Boolean @default(true)
+  allowMessages     Boolean @default(true)
+
+  // Preferences
+  language String @default("en")
+  currency String @default("USD")
+  timezone String @default("America/New_York")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+// ==================== PROPERTIES ====================
+
+model Property {
+  id          String   @id @default(cuid())
+
+  // Basic Info
+  title       String
+  description String?
+  slug        String   @unique
+
+  // Property Details
+  propertyType    String   // "single_family", "multi_family", "condo", "townhouse", "land", "commercial"
+  listingType     String   // "sale", "rent", "lease_to_own"
+  status          String   @default("draft") // "draft", "active", "pending", "sold", "rented", "off_market"
+
+  // Pricing
+  price           Decimal  @db.Decimal(12, 2)
+  pricePerSqFt    Decimal? @db.Decimal(8, 2)
+  currency        String   @default("USD")
+
+  // For rentals
+  rentAmount      Decimal? @db.Decimal(10, 2)
+  rentPeriod      String?  // "monthly", "weekly", "yearly"
+  securityDeposit Decimal? @db.Decimal(10, 2)
+
+  // Location
+  address         String
+  addressLine2    String?
+  city            String
+  state           String
+  zipCode         String
+  country         String   @default("US")
+  latitude        Decimal? @db.Decimal(10, 8)
+  longitude       Decimal? @db.Decimal(11, 8)
+  neighborhood    String?
+
+  // Property Specs
+  bedrooms        Int?
+  bathrooms       Decimal? @db.Decimal(3, 1)
+  squareFeet      Int?
+  lotSize         Decimal? @db.Decimal(10, 2)
+  lotSizeUnit     String?  // "sqft", "acres"
+  yearBuilt       Int?
+  stories         Int?
+  parkingSpaces   Int?
+  garageSpaces    Int?
+
+  // Features (stored as JSON arrays)
+  features        String[] // ["pool", "fireplace", "ac", "heating", "laundry"]
+  amenities       String[] // ["gym", "doorman", "rooftop", "storage"]
+  utilities       String[] // ["water", "gas", "electric", "internet"]
+
+  // Investment Info
+  isInvestment    Boolean  @default(false)
+  capRate         Decimal? @db.Decimal(5, 2)
+  noi             Decimal? @db.Decimal(12, 2)
+  occupancyRate   Decimal? @db.Decimal(5, 2)
+  monthlyRent     Decimal? @db.Decimal(10, 2)
+  annualTaxes     Decimal? @db.Decimal(10, 2)
+  annualInsurance Decimal? @db.Decimal(10, 2)
+  hoaFees         Decimal? @db.Decimal(8, 2)
+  hoaFrequency    String?  // "monthly", "quarterly", "yearly"
+
+  // Metadata
+  ownerId         String
+  agentId         String?
+  viewCount       Int      @default(0)
+  favoriteCount   Int      @default(0)
+  listedAt        DateTime?
+  soldAt          DateTime?
+  soldPrice       Decimal? @db.Decimal(12, 2)
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  images          PropertyImage[]
+  documents       PropertyDocument[]
+  favorites       SavedProperty[]
+  taxes           PropertyTax[]
+  insurance       PropertyInsurance[]
+  maintenance     MaintenanceRecord[]
+  comparables     ComparableSale[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([propertyType])
+  @@index([listingType])
+  @@index([city, state])
+  @@index([price])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  url         String
+  thumbnailUrl String?
+  caption     String?
+  order       Int      @default(0)
+  isPrimary   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model PropertyDocument {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  name        String
+  type        String   // "disclosure", "inspection", "title", "other"
+  url         String
+  fileSize    Int?
+  mimeType    String?
+
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  @@index([propertyId])
+  @@map("property_documents")
+}
+
+model SavedProperty {
+  id          String   @id @default(cuid())
+  userId      String
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  notes       String?
+  savedAt     DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@index([userId])
+  @@index([propertyId])
+  @@map("saved_properties")
+}
+
+// ==================== PROPERTY FINANCIALS ====================
+
+model PropertyTax {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  year        Int
+  amount      Decimal  @db.Decimal(10, 2)
+  paidDate    DateTime?
+  dueDate     DateTime?
+  status      String   @default("pending") // "pending", "paid", "overdue"
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([propertyId, year])
+  @@index([propertyId])
+  @@map("property_taxes")
+}
+
+model PropertyInsurance {
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  provider      String
+  policyNumber  String?
+  coverageType  String   // "homeowners", "landlord", "flood", "umbrella"
+  coverageAmount Decimal @db.Decimal(12, 2)
+  premium       Decimal  @db.Decimal(10, 2)
+  premiumFrequency String @default("yearly") // "monthly", "quarterly", "yearly"
+  deductible    Decimal? @db.Decimal(10, 2)
+  startDate     DateTime
+  endDate       DateTime
+  status        String   @default("active") // "active", "expired", "cancelled"
+  notes         String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("property_insurance")
+}
+
+model MaintenanceRecord {
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  category    String   // "plumbing", "electrical", "hvac", "appliance", "structural", "landscaping", "cleaning", "other"
+  priority    String   @default("medium") // "low", "medium", "high", "urgent"
+  status      String   @default("pending") // "pending", "in_progress", "completed", "cancelled"
+
+  estimatedCost Decimal? @db.Decimal(10, 2)
+  actualCost    Decimal? @db.Decimal(10, 2)
+  vendor        String?
+  vendorContact String?
+
+  scheduledDate DateTime?
+  completedDate DateTime?
+  notes         String?
+
+  createdBy     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([status])
+  @@index([category])
+  @@map("maintenance_records")
+}
+
+// ==================== CO-INVESTMENT SYSTEM ====================
+
+model CoInvestmentPool {
+  id              String   @id @default(cuid())
+  propertyId      String?
+
+  // Pool Details
+  name            String
+  slug            String   @unique
+  description     String?
+
+  // Financial Structure
+  targetAmount    Decimal  @db.Decimal(14, 2)
+  raisedAmount    Decimal  @default(0) @db.Decimal(14, 2)
+  minInvestment   Decimal  @db.Decimal(10, 2)
+  maxInvestment   Decimal? @db.Decimal(10, 2)
+  sharePrice      Decimal  @db.Decimal(10, 2)
+  totalShares     Int
+  availableShares Int
+
+  // Returns & Timeline
+  expectedReturn  Decimal? @db.Decimal(5, 2) // Percentage
+  holdPeriod      Int?     // Months
+  distributionFrequency String @default("quarterly") // "monthly", "quarterly", "annually"
+
+  // Status Management
+  status          String   @default("draft") // "draft", "seeking", "funded", "active", "distributing", "completed", "cancelled"
+  startDate       DateTime?
+  endDate         DateTime?
+  fundingDeadline DateTime?
+
+  // Management
+  managerId       String
+  manager         User     @relation("ManagedPools", fields: [managerId], references: [id])
+  managementFee   Decimal  @default(2.0) @db.Decimal(5, 2) // Percentage
+
+  // Metadata
+  riskLevel       String   @default("moderate") // "low", "moderate", "high"
+  investmentType  String   @default("equity") // "equity", "debt", "hybrid"
+  propertyType    String?
+  location        String?
+  highlights      Json?    // Array of highlight strings
+  documents       Json?    // Array of document objects
+  images          Json?    // Array of image URLs
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  investors       CoInvestmentInvestor[]
+  distributions   CoInvestmentDistribution[]
+
+  @@index([status])
+  @@index([managerId])
+  @@index([propertyId])
+  @@map("coinvestment_pools")
+}
+
+model CoInvestmentInvestor {
+  id              String   @id @default(cuid())
+  poolId          String
+  pool            CoInvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Investment Details
+  shares          Int
+  amountInvested  Decimal  @db.Decimal(12, 2)
+  sharePrice      Decimal  @db.Decimal(10, 2) // Price at time of investment
+
+  // Payment
+  stripePaymentId String?
+  paymentStatus   String   @default("pending") // "pending", "processing", "completed", "failed", "refunded"
+  paymentMethod   String?  // "card", "bank_transfer"
+
+  // Agreement
+  agreementSigned   Boolean   @default(false)
+  agreementSignedAt DateTime?
+
+  // Status
+  status          String   @default("pending") // "pending", "confirmed", "cancelled"
+  totalDistributed Decimal @default(0) @db.Decimal(12, 2)
+  ownershipPercent Decimal? @db.Decimal(5, 4) // e.g., 0.0250 = 2.5%
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  investedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  distributions   CoInvestmentDistribution[]
+
+  @@unique([poolId, userId])
+  @@index([userId])
+  @@index([poolId])
+  @@index([paymentStatus])
+  @@map("coinvestment_investors")
+}
+
+model CoInvestmentDistribution {
+  id              String   @id @default(cuid())
+  poolId          String
+  pool            CoInvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  investorId      String?
+  investor        CoInvestmentInvestor? @relation(fields: [investorId], references: [id], onDelete: SetNull)
+
+  // Distribution Details
+  type            String   // "dividend", "interest", "principal_return", "sale_proceeds"
+  period          String?  // "2024-Q1", "2024-01"
+  grossAmount     Decimal  @db.Decimal(12, 2)
+  fees            Decimal  @default(0) @db.Decimal(10, 2)
+  taxes           Decimal  @default(0) @db.Decimal(10, 2)
+  netAmount       Decimal  @db.Decimal(12, 2)
+
+  // Payment
+  paymentMethod   String?  // "bank_transfer", "check"
+  stripeTransferId String?
+  status          String   @default("pending") // "pending", "processing", "completed", "failed"
+
+  // Timestamps
+  declaredAt      DateTime @default(now())
+  paidAt          DateTime?
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([poolId])
+  @@index([investorId])
+  @@index([status])
+  @@map("coinvestment_distributions")
+}
+
+// ==================== FINANCIAL MODULE ====================
+
+model UserAccount {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Plaid Integration
+  plaidItemId     String?
+  plaidAccessToken String?
+  institutionId   String?
+  institutionName String?
+  institutionLogo String?
+
+  // Account Details
+  accountId       String   @unique // Plaid account ID or generated for manual
+  name            String
+  officialName    String?
+  type            String   // "checking", "savings", "credit", "loan", "investment", "other"
+  subtype         String?  // "checking", "savings", "money market", "cd", "credit card", etc.
+  mask            String?  // Last 4 digits
+  currency        String   @default("USD")
+
+  // Balances
+  currentBalance  Decimal? @db.Decimal(14, 2)
+  availableBalance Decimal? @db.Decimal(14, 2)
+  limit           Decimal? @db.Decimal(14, 2) // For credit cards
+
+  // Status
+  status          String   @default("active") // "active", "inactive", "error", "disconnected"
+  lastSynced      DateTime?
+  errorCode       String?
+  errorMessage    String?
+
+  // Manual vs Linked
+  isManual        Boolean  @default(false)
+  includeInNetWorth Boolean @default(true)
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  transactions    Transaction[]
+
+  @@index([userId])
+  @@index([plaidItemId])
+  @@index([status])
+  @@map("user_accounts")
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  userId          String
+  accountId       String
+  account         UserAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Plaid Transaction ID
+  plaidTransactionId String? @unique
+
+  // Transaction Details
+  name            String
+  merchantName    String?
+  amount          Decimal  @db.Decimal(14, 2) // Positive = expense, Negative = income
+  currency        String   @default("USD")
+  date            DateTime
+  authorizedDate  DateTime?
+  pending         Boolean  @default(false)
+
+  // Categorization
+  category        String?  // Primary category
+  subcategory     String?  // Secondary category
+  personalCategory String? // User's custom category
+
+  // Payment Info
+  paymentChannel  String?  // "online", "in store", "other"
+  paymentMeta     Json?    // Additional payment metadata
+
+  // Location
+  location        Json?    // { address, city, state, lat, lon }
+
+  // Metadata
+  notes           String?
+  tags            String[] // User-defined tags
+  isHidden        Boolean  @default(false)
+  budgetId        String?  // Link to budget category
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([date])
+  @@index([category])
+  @@map("transactions")
+}
+
+model Budget {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Budget Details
+  name            String
+  category        String
+  amount          Decimal  @db.Decimal(10, 2)
+  spent           Decimal  @default(0) @db.Decimal(10, 2)
+  currency        String   @default("USD")
+
+  // Period
+  period          String   @default("monthly") // "weekly", "monthly", "quarterly", "yearly"
+  startDate       DateTime @default(now())
+  endDate         DateTime?
+
+  // Settings
+  color           String   @default("#3B82F6")
+  icon            String?
+  rollover        Boolean  @default(false)
+  rolloverAmount  Decimal  @default(0) @db.Decimal(10, 2)
+  alertEnabled    Boolean  @default(true)
+  alertThreshold  Decimal  @default(80) @db.Decimal(5, 2) // Percentage
+
+  // Status
+  status          String   @default("active") // "active", "paused", "completed"
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([category])
+  @@index([status])
+  @@map("budgets")
+}
+
+model NetWorthSnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Balances
+  totalAssets     Decimal  @db.Decimal(14, 2)
+  totalDebt       Decimal  @db.Decimal(14, 2)
+  netWorth        Decimal  @db.Decimal(14, 2)
+
+  // Breakdown by type
+  cashBalance     Decimal  @default(0) @db.Decimal(14, 2) // Checking + Savings
+  investmentBalance Decimal @default(0) @db.Decimal(14, 2)
+  propertyValue   Decimal  @default(0) @db.Decimal(14, 2)
+  creditDebt      Decimal  @default(0) @db.Decimal(14, 2)
+  loanDebt        Decimal  @default(0) @db.Decimal(14, 2)
+  otherAssets     Decimal  @default(0) @db.Decimal(14, 2)
+
+  // Metadata
+  accountCount    Int      @default(0)
+  snapshotDate    DateTime @default(now())
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, snapshotDate])
+  @@index([userId])
+  @@index([snapshotDate])
+  @@map("net_worth_snapshots")
+}
+
+model FinancialGoal {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Goal Details
+  name            String
+  description     String?
+  targetAmount    Decimal  @db.Decimal(14, 2)
+  currentAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  currency        String   @default("USD")
+
+  // Timeline
+  targetDate      DateTime?
+  startDate       DateTime @default(now())
+
+  // Goal Type
+  type            String   @default("savings") // "savings", "debt_payoff", "investment", "purchase", "emergency_fund"
+  priority        String   @default("medium") // "high", "medium", "low"
+
+  // Linked Account (optional - for automatic tracking)
+  linkedAccountId String?
+
+  // Visual
+  color           String   @default("#10B981")
+  icon            String?
+
+  // Status
+  status          String   @default("active") // "active", "paused", "completed", "abandoned"
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Contributions
+  contributions   GoalContribution[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([targetDate])
+  @@map("financial_goals")
+}
+
+model GoalContribution {
+  id              String   @id @default(cuid())
+  goalId          String
+  goal            FinancialGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  amount          Decimal  @db.Decimal(14, 2)
+  note            String?
+  contributionDate DateTime @default(now())
+
+  // Source (optional - linked transaction)
+  transactionId   String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([goalId])
+  @@index([contributionDate])
+  @@map("goal_contributions")
+}
+
+model RecurringTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Transaction Pattern
+  name            String
+  merchantName    String?
+  amount          Decimal  @db.Decimal(14, 2)
+  amountVariation Decimal  @default(0) @db.Decimal(14, 2) // Allowed variation from average
+
+  // Frequency
+  frequency       String   // "weekly", "biweekly", "monthly", "quarterly", "annually"
+  dayOfMonth      Int?     // For monthly
+  dayOfWeek       Int?     // For weekly (0-6)
+
+  // Type
+  type            String   // "bill", "subscription", "income", "transfer"
+  category        String?
+
+  // Linked Account
+  accountId       String?
+
+  // Detection Info
+  isAutoDetected  Boolean  @default(false)
+  confidence      Decimal? @db.Decimal(5, 2) // Detection confidence 0-100
+  matchedTransactionIds String[] // Plaid transaction IDs that matched
+
+  // Tracking
+  lastOccurrence  DateTime?
+  nextExpected    DateTime?
+  occurrenceCount Int      @default(0)
+
+  // Status
+  status          String   @default("active") // "active", "paused", "ended"
+  endDate         DateTime?
+
+  // Alerts
+  alertEnabled    Boolean  @default(true)
+  alertDaysBefore Int      @default(3)
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([nextExpected])
+  @@map("recurring_transactions")
+}
+
+// ==================== SOCIAL & COMMUNITY ====================
+
+model Post {
+  id        String   @id @default(cuid())
+  content   String?  @db.Text
+  mediaUrls String[] // Array of URLs for images/videos
+
+  authorId  String
+  author    User     @relation("UserPosts", fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Community Context (Optional - if post belongs to a group)
+  groupId   String?
+  group     CommunityGroup? @relation(fields: [groupId], references: [id])
+
+  // Engagement
+  likes     Like[]
+  comments  Comment[]
+
+  // Hashtags and Mentions
+  hashtags  PostHashtag[]
+  mentions  Mention[]
+
+  // Content Moderation
+  reports   ContentReport[] @relation("PostReports")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([groupId])
+  @@map("social_posts")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Parent Comment (for nested replies)
+  parentId  String?
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  children  Comment[] @relation("CommentReplies")
+
+  likes     Like[]
+
+  // Content Moderation
+  reports   ContentReport[] @relation("CommentReports")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@map("social_comments")
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Polymorphic-like association (can like a Post or a Comment)
+  postId    String?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  // Prevent multiple likes from same user on same item
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+  @@map("social_likes")
+}
+
+model Follow {
+  followerId  String
+  follower    User   @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
+
+  followingId String
+  following   User   @relation("UserFollowedBy", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+  @@map("social_follows")
+}
+
+// ==================== HASHTAGS & MENTIONS ====================
+
+model Hashtag {
+  id        String   @id @default(cuid())
+  name      String   @unique // Normalized lowercase hashtag (without #)
+
+  posts     PostHashtag[]
+
+  postCount Int      @default(0) // Denormalized count for trending
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postCount(sort: Desc)]) // For trending hashtags
+  @@map("social_hashtags")
+}
+
+model PostHashtag {
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  hashtagId String
+  hashtag   Hashtag  @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([postId, hashtagId])
+  @@map("social_post_hashtags")
+}
+
+model Mention {
+  id        String   @id @default(cuid())
+
+  // The post containing the mention
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // The user being mentioned
+  mentionedUserId String
+  mentionedUser   User   @relation("MentionedUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  // The user who made the mention (post author)
+  mentionerId String
+  mentioner   User   @relation("Mentioner", fields: [mentionerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, mentionedUserId])
+  @@index([mentionedUserId])
+  @@map("social_mentions")
+}
+
+// ==================== CONTENT MODERATION ====================
+
+model ContentReport {
+  id        String   @id @default(cuid())
+
+  reason    String   // SPAM, HARASSMENT, INAPPROPRIATE, HATE_SPEECH, OTHER
+  details   String?  @db.Text
+
+  // The reporter
+  reporterId String
+  reporter   User    @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // What's being reported (polymorphic)
+  postId    String?
+  post      Post?    @relation("PostReports", fields: [postId], references: [id], onDelete: Cascade)
+
+  commentId String?
+  comment   Comment? @relation("CommentReports", fields: [commentId], references: [id], onDelete: Cascade)
+
+  // Moderation status
+  status    String   @default("PENDING") // PENDING, REVIEWED, DISMISSED, ACTION_TAKEN
+
+  // Admin who reviewed
+  reviewedById String?
+  reviewedBy   User?   @relation("Reviewer", fields: [reviewedById], references: [id])
+
+  reviewedAt   DateTime?
+  resolution   String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([postId])
+  @@index([commentId])
+  @@map("social_content_reports")
+}
+
+// ==================== MESSAGING ====================
+
+model Conversation {
+  id            String    @id @default(cuid())
+
+  // Many-to-Many via implicit join table or explicit logic
+  participants  ConversationParticipant[]
+
+  messages      Message[]
+
+  lastMessageAt DateTime  @default(now())
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("chat_conversations")
+}
+
+model ConversationParticipant {
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?    // For unread message counts
+
+  @@id([conversationId, userId])
+  @@map("chat_participants")
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  content        String       @db.Text
+
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id])
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  isSystemMessage Boolean     @default(false)
+
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+  @@map("chat_messages")
+}
+
+// ==================== GROUPS ====================
+
+model CommunityGroup {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  avatar      String?
+
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+
+  members     GroupMember[]
+  posts       Post[]
+
+  isPrivate   Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("community_groups")
+}
+
+model GroupMember {
+  groupId     String
+  group       CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role        String         @default("member") // "admin", "member"
+  joinedAt    DateTime       @default(now())
+
+  @@id([groupId, userId])
+  @@map("community_group_members")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String   // "like", "comment", "follow", "message", "investment", "group_invite", etc.
+  title     String
+  message   String
+  data      Json?    // Extra metadata (postId, commentId, userId, etc.)
+
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ==================== SECURITY & COMPLIANCE ====================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action      String   // LOGIN, LOGOUT, PASSWORD_CHANGE, etc.
+  category    String   // AUTHENTICATION, ACCOUNT, COMPLIANCE, FINANCIAL, etc.
+  severity    String   // INFO, WARNING, CRITICAL
+
+  resourceType String? // User, Property, Investment, etc.
+  resourceId   String?
+
+  details     Json     @default("{}")
+
+  ipAddress   String?
+  userAgent   String?  @db.Text
+  sessionId   String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([category])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model KYCVerification {
+  id            String   @id @default(cuid())
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Personal Information
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime
+  nationality   String
+
+  // Address
+  addressStreet     String
+  addressCity       String
+  addressState      String
+  addressPostalCode String
+  addressCountry    String
+
+  // Tax Information
+  ssnLast4      String?  // Last 4 digits only
+  taxId         String?
+
+  // Documents
+  documents     Json     @default("[]")
+
+  // Verification Status
+  status        String   @default("pending") // pending, submitted, under_review, approved, rejected
+
+  // Review
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewNotes   String?
+  rejectionReason String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_verifications")
+}
+
+model AMLTransaction {
+  id              String   @id @default(cuid())
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount          Decimal  @db.Decimal(15, 2)
+  transactionType String   // deposit, withdrawal, investment, transfer
+  currency        String   @default("USD")
+
+  metadata        Json     @default("{}")
+
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([amount])
+  @@map("aml_transactions")
+}
+
+model AMLAlert {
+  id            String   @id @default(cuid())
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  alertType     String   // LARGE_TRANSACTION, RAPID_TRANSACTIONS, etc.
+  severity      String   // LOW, MEDIUM, HIGH, CRITICAL
+  status        String   @default("PENDING") // PENDING, UNDER_REVIEW, CLEARED, ESCALATED, REPORTED
+
+  description   String
+  transactionIds String[] // Array of related transaction IDs
+  ruleId        String
+  details       Json     @default("{}")
+
+  reviewedAt    DateTime?
+  reviewNotes   String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([severity])
+  @@map("aml_alerts")
+}
+
+model UserConsent {
+  id          String   @id @default(cuid())
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  consentType String   // marketing, data_processing, third_party_sharing, etc.
+  granted     Boolean  @default(false)
+
+  grantedAt   DateTime
+  revokedAt   DateTime?
+
+  details     Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, consentType])
+  @@index([userId])
+  @@map("user_consents")
+}
+
+model AccountDeletionRequest {
+  id                   String    @id @default(cuid())
+
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id])
+
+  reason               String?
+  status               String    @default("PENDING") // PENDING, COMPLETED, CANCELLED
+
+  requestedAt          DateTime
+  scheduledDeletionAt  DateTime?
+  completedAt          DateTime?
+  cancelledAt          DateTime?
+
+  createdAt            DateTime  @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@map("account_deletion_requests")
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token     String   @unique
+  platform  String   // ios, android, web
+  deviceId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+// ==================== SAFE HOUSING MODULE ====================
+
+model SafeHousingListing {
+  id              String   @id @default(cuid())
+
+  // Property Details
+  title           String
+  description     String?  @db.Text
+  propertyType    String   // "apartment", "house", "shelter", "transitional", "shared"
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  country         String   @default("US")
+  latitude        Decimal? @db.Decimal(10, 8)
+  longitude       Decimal? @db.Decimal(11, 8)
+
+  // Pricing
+  monthlyRent     Decimal? @db.Decimal(10, 2)
+  securityDeposit Decimal? @db.Decimal(10, 2)
+  isSubsidized    Boolean  @default(false)
+  acceptsVouchers Boolean  @default(false)
+
+  // Safety Features
+  safetyScore     Int?     // 0-100
+  hasSecuritySystem   Boolean @default(false)
+  hasSecureEntry      Boolean @default(false)
+  hasCameras          Boolean @default(false)
+  hasOnSiteStaff      Boolean @default(false)
+  petFriendly         Boolean @default(false)
+  childFriendly       Boolean @default(false)
+  wheelchairAccessible Boolean @default(false)
+
+  // Availability
+  availableFrom   DateTime?
+  maxStayMonths   Int?     // null = no limit
+  status          String   @default("available") // "available", "occupied", "pending", "unavailable"
+
+  // Verification
+  isVerified      Boolean  @default(false)
+  verifiedAt      DateTime?
+  verifiedBy      String?
+
+  // Contact
+  contactName     String?
+  contactPhone    String?
+  contactEmail    String?
+  landlordId      String?
+
+  // Images
+  images          String[] // Array of image URLs
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([city, state])
+  @@index([status])
+  @@index([isVerified])
+  @@map("safe_housing_listings")
+}
+
+model SafeHousingResource {
+  id              String   @id @default(cuid())
+
+  // Resource Info
+  name            String
+  description     String?  @db.Text
+  category        String   // "legal", "financial", "counseling", "hotline", "shelter", "government"
+  type            String   // "organization", "hotline", "website", "document", "program"
+
+  // Contact
+  phone           String?
+  email           String?
+  website         String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+
+  // Availability
+  is24Hours       Boolean  @default(false)
+  hoursOfOperation String?
+  languages       String[] // ["English", "Spanish", etc.]
+  servicesOffered String[] // ["legal_aid", "counseling", "housing", etc.]
+
+  // Verification
+  isVerified      Boolean  @default(false)
+
+  // Coverage
+  coverageArea    String?  // "national", "state", "local"
+  coverageStates  String[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([type])
+  @@map("safe_housing_resources")
+}
+
+model SafetyPlan {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Plan Details
+  name            String   @default("My Safety Plan")
+  emergencyContacts Json   @default("[]") // Array of { name, phone, relationship }
+  safeLocations   Json     @default("[]") // Array of { name, address, notes }
+  importantDocs   Json     @default("[]") // Array of { type, location, notes }
+  financialSteps  Json     @default("[]") // Array of { step, completed, notes }
+
+  // Status
+  isActive        Boolean  @default(true)
+  lastReviewedAt  DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@map("safety_plans")
+}
+
+// ==================== AGENT & PARTNER ECOSYSTEM ====================
+
+model Agent {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+
+  // Professional Info
+  licenseNumber   String?
+  licenseState    String?
+  licenseExpiry   DateTime?
+  mlsId           String?
+  brokerageName   String?
+  brokerageId     String?
+
+  // Profile
+  displayName     String
+  bio             String?  @db.Text
+  avatar          String?
+  coverImage      String?
+  specializations String[] // ["residential", "commercial", "luxury", "first_time"]
+  regions         String[] // ["California", "New York"]
+  languages       String[] // ["English", "Spanish"]
+  yearsExperience Int?
+
+  // Contact
+  phone           String?
+  email           String?
+  website         String?
+
+  // Performance
+  totalTransactions Int    @default(0)
+  totalVolume     Decimal  @default(0) @db.Decimal(14, 2)
+  avgRating       Decimal  @default(0) @db.Decimal(3, 2)
+  reviewCount     Int      @default(0)
+  responseTime    Int?     // Average response time in minutes
+
+  // Commission & Earnings
+  commissionRate  Decimal  @default(3.0) @db.Decimal(5, 2)
+  totalEarnings   Decimal  @default(0) @db.Decimal(14, 2)
+  pendingEarnings Decimal  @default(0) @db.Decimal(14, 2)
+
+  // Tier & Status
+  tier            String   @default("bronze") // "bronze", "silver", "gold", "platinum"
+  status          String   @default("pending") // "pending", "active", "suspended", "inactive"
+  verificationStatus String @default("unverified") // "unverified", "pending", "verified", "rejected"
+  verifiedAt      DateTime?
+
+  // Referrals
+  referralCode    String?  @unique
+  referralCount   Int      @default(0)
+
+  // Relations
+  reviews         AgentReview[]
+  leads           AgentLead[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([tier])
+  @@index([avgRating])
+  @@map("agents")
+}
+
+model AgentReview {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  reviewerId      String   // userId of reviewer
+
+  // Review Content
+  rating          Int      // 1-5
+  title           String?
+  content         String?  @db.Text
+  transactionType String?  // "purchase", "sale", "rental"
+
+  // Verification
+  isVerified      Boolean  @default(false) // Transaction-verified review
+
+  // Response
+  agentResponse   String?  @db.Text
+  respondedAt     DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([rating])
+  @@map("agent_reviews")
+}
+
+model AgentLead {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  // Lead Info
+  clientName      String
+  clientEmail     String?
+  clientPhone     String?
+  propertyInterest String? // Property type or ID
+  budget          Decimal? @db.Decimal(14, 2)
+  message         String?  @db.Text
+
+  // Status
+  status          String   @default("new") // "new", "contacted", "qualified", "showing", "offer", "closed", "lost"
+  source          String   @default("platform") // "platform", "referral", "direct"
+  priority        String   @default("medium") // "low", "medium", "high"
+
+  // Follow-up
+  lastContactedAt DateTime?
+  nextFollowUpAt  DateTime?
+  notes           String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([status])
+  @@map("agent_leads")
+}
+
+model Partner {
+  id              String   @id @default(cuid())
+
+  // Company Info
+  companyName     String
+  description     String?  @db.Text
+  logo            String?
+  website         String?
+  category        String   // "lender", "insurance", "title", "inspection", "legal", "accounting"
+
+  // Contact
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+
+  // Partnership
+  partnershipType String   @default("standard") // "standard", "premium", "strategic"
+  commissionRate  Decimal? @db.Decimal(5, 2)
+  status          String   @default("pending") // "pending", "active", "suspended", "terminated"
+
+  // Performance
+  referralCount   Int      @default(0)
+  totalRevenue    Decimal  @default(0) @db.Decimal(14, 2)
+
+  // Coverage
+  serviceAreas    String[]
+  servicesOffered String[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@map("partners")
+}
+
+// ==================== TAX & ACCOUNTING ====================
+
+model ChartOfAccounts {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Account Info
+  accountNumber   String
+  name            String
+  description     String?
+  type            String   // "asset", "liability", "equity", "revenue", "expense"
+  subtype         String?  // "cash", "receivable", "payable", "tax", etc.
+  parentId        String?  // For sub-accounts
+
+  // Balances
+  balance         Decimal  @default(0) @db.Decimal(14, 2)
+  currency        String   @default("USD")
+
+  // Settings
+  isActive        Boolean  @default(true)
+  isTaxRelevant   Boolean  @default(false)
+  taxCategory     String?  // IRS category mapping
+
+  // Journal entries
+  entries         JournalEntry[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, accountNumber])
+  @@index([userId])
+  @@index([type])
+  @@map("chart_of_accounts")
+}
+
+model JournalEntry {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Entry Details
+  accountId       String
+  account         ChartOfAccounts @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date            DateTime
+  description     String
+  reference       String?  // Invoice #, receipt #, etc.
+
+  // Amounts (double-entry)
+  debit           Decimal  @default(0) @db.Decimal(14, 2)
+  credit          Decimal  @default(0) @db.Decimal(14, 2)
+
+  // Metadata
+  category        String?
+  propertyId      String?  // Link to property for RE deductions
+  isReconciled    Boolean  @default(false)
+  attachmentUrl   String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([date])
+  @@map("journal_entries")
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  userId          String
+  invoiceNumber   String
+
+  // Client Info
+  clientName      String
+  clientEmail     String?
+  clientAddress   String?
+
+  // Invoice Details
+  issueDate       DateTime @default(now())
+  dueDate         DateTime
+  status          String   @default("draft") // "draft", "sent", "viewed", "paid", "overdue", "cancelled"
+
+  // Amounts
+  subtotal        Decimal  @db.Decimal(14, 2)
+  taxRate         Decimal  @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal  @default(0) @db.Decimal(14, 2)
+  discount        Decimal  @default(0) @db.Decimal(14, 2)
+  total           Decimal  @db.Decimal(14, 2)
+  amountPaid      Decimal  @default(0) @db.Decimal(14, 2)
+  currency        String   @default("USD")
+
+  // Line Items stored as JSON
+  lineItems       Json     @default("[]") // Array of { description, quantity, unitPrice, amount }
+
+  // Payment
+  paymentMethod   String?
+  paidAt          DateTime?
+
+  // Notes
+  notes           String?  @db.Text
+  terms           String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+model TaxDeduction {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Deduction Info
+  taxYear         Int
+  category        String   // "mortgage_interest", "property_tax", "depreciation", "repairs", "insurance", "management", "travel", "other"
+  description     String
+  amount          Decimal  @db.Decimal(14, 2)
+
+  // Property Link (for RE deductions)
+  propertyId      String?
+
+  // Documentation
+  receiptUrl      String?
+  notes           String?
+
+  // Status
+  isVerified      Boolean  @default(false)
+  isApplied       Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([taxYear])
+  @@index([category])
+  @@map("tax_deductions")
+}
+
+model TaxEstimate {
+  id              String   @id @default(cuid())
+  userId          String
+
+  // Tax Period
+  taxYear         Int
+  quarter         Int?     // 1-4, null for annual
+
+  // Income
+  totalIncome     Decimal  @db.Decimal(14, 2)
+  rentalIncome    Decimal  @default(0) @db.Decimal(14, 2)
+  investmentIncome Decimal @default(0) @db.Decimal(14, 2)
+  selfEmploymentIncome Decimal @default(0) @db.Decimal(14, 2)
+
+  // Deductions
+  totalDeductions Decimal  @default(0) @db.Decimal(14, 2)
+  taxableIncome   Decimal  @db.Decimal(14, 2)
+
+  // Estimated Tax
+  federalTax      Decimal  @db.Decimal(14, 2)
+  stateTax        Decimal  @default(0) @db.Decimal(14, 2)
+  selfEmploymentTax Decimal @default(0) @db.Decimal(14, 2)
+  totalEstimatedTax Decimal @db.Decimal(14, 2)
+
+  // Quarterly Payments
+  amountDue       Decimal  @default(0) @db.Decimal(14, 2)
+  amountPaid      Decimal  @default(0) @db.Decimal(14, 2)
+  dueDate         DateTime?
+  paidDate        DateTime?
+
+  // Filing Status
+  filingStatus    String   @default("single") // "single", "married_joint", "married_separate", "head_of_household"
+  state           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId])
+  @@index([taxYear])
+  @@map("tax_estimates")
+}
+
+// ==================== CONTENT & STREAMING ====================
+
+model ContentItem {
+  id              String   @id @default(cuid())
+
+  // Content Info
+  title           String
+  description     String?  @db.Text
+  slug            String   @unique
+  type            String   // "video", "article", "webinar", "podcast", "course"
+  category        String   // "investing", "finance", "legal", "lifestyle", "market_analysis"
+
+  // Media
+  thumbnailUrl    String?
+  videoUrl        String?
+  audioUrl        String?
+  articleContent  String?  @db.Text
+  duration        Int?     // Duration in seconds
+
+  // Creator
+  creatorId       String
+  creatorName     String
+
+  // Metadata
+  tags            String[]
+  difficulty      String   @default("beginner") // "beginner", "intermediate", "advanced"
+  isPremium       Boolean  @default(false)
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+
+  // Engagement
+  viewCount       Int      @default(0)
+  likeCount       Int      @default(0)
+  commentCount    Int      @default(0)
+  avgRating       Decimal  @default(0) @db.Decimal(3, 2)
+
+  // Progress tracking
+  progress        ContentProgress[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([type])
+  @@index([category])
+  @@index([creatorId])
+  @@index([isPublished])
+  @@map("content_items")
+}
+
+model ContentProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  contentId       String
+  content         ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  // Progress
+  progress        Decimal  @default(0) @db.Decimal(5, 2) // 0-100
+  lastPosition    Int?     // Last playback position in seconds
+  isCompleted     Boolean  @default(false)
+  completedAt     DateTime?
+
+  // Engagement
+  rating          Int?     // 1-5
+  bookmarked      Boolean  @default(false)
+  notes           String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, contentId])
+  @@index([userId])
+  @@index([contentId])
+  @@map("content_progress")
+}
+
+model Webinar {
+  id              String   @id @default(cuid())
+
+  // Event Info
+  title           String
+  description     String?  @db.Text
+  hostName        String
+  hostId          String
+
+  // Schedule
+  scheduledAt     DateTime
+  duration        Int      // Duration in minutes
+  timezone        String   @default("America/New_York")
+
+  // Status
+  status          String   @default("scheduled") // "scheduled", "live", "completed", "cancelled"
+
+  // Media
+  thumbnailUrl    String?
+  recordingUrl    String?
+  streamUrl       String?
+
+  // Settings
+  maxAttendees    Int?
+  currentAttendees Int     @default(0)
+  isPublic        Boolean  @default(true)
+  isPremium       Boolean  @default(false)
+  requiresRegistration Boolean @default(true)
+
+  // Metadata
+  tags            String[]
+  category        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([hostId])
+  @@map("webinars")
+}
+
+// ==================== COMPARABLE SALES ====================
+
+model ComparableSale {
+  id              String   @id @default(cuid())
+
+  // Subject property
+  propertyId      String
+  property        Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  // Comp details
+  address         String
+  city            String
+  state           String
+  zipCode         String
+  latitude        Decimal? @db.Decimal(10, 8)
+  longitude       Decimal? @db.Decimal(11, 8)
+
+  // Property specs
+  propertyType    String
+  bedrooms        Int?
+  bathrooms       Decimal? @db.Decimal(3, 1)
+  squareFeet      Int?
+  lotSize         Decimal? @db.Decimal(10, 2)
+  yearBuilt       Int?
+
+  // Sale details
+  salePrice       Decimal  @db.Decimal(12, 2)
+  saleDate        DateTime
+  daysOnMarket    Int?
+  pricePerSqFt    Decimal? @db.Decimal(8, 2)
+
+  // Adjustments (in %)
+  adjustmentTotal Decimal? @db.Decimal(5, 2) @default(0) // Total % adjustment
+  adjustments     String[] // ["bathroom: +5%", "sqft: -3%", "location: +2%"]
+
+  // Valuation
+  adjustedPrice   Decimal? @db.Decimal(12, 2) // salePrice adjusted for differences
+
+  // Source
+  source          String   @default("manual") // "manual", "zillow", "redfin", "mls"
+  sourceUrl       String?
+  dataProvider    String?
+
+  // Relevance scoring
+  distanceFromSubject Float? // Miles
+  saleRecency     Int?     // Days since sale
+  relevanceScore  Float?   // 0-100, higher is better
+
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([city, state])
+  @@index([saleDate])
+  @@map("comparable_sales")
+}
+
+// ==================== MENTORSHIP NETWORK ====================
+
+model MentorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  headline        String   // Short bio/title
+  expertise       String[] // ["real_estate", "tax", "investing", "first_time_buyer"]
+  yearsExperience Int
+  languages       String[] @default(["en"])
+  timezone        String   @default("America/New_York")
+  availability    String   @default("available") // "available", "limited", "unavailable"
+  maxMentees      Int      @default(3)
+  currentMentees  Int      @default(0)
+  rating          Decimal  @default(0) @db.Decimal(3, 2)
+  totalReviews    Int      @default(0)
+  totalSessions   Int      @default(0)
+  bio             String?
+  linkedinUrl     String?
+  verified        Boolean  @default(false)
+
+  // Relations
+  mentorships     Mentorship[]     @relation("MentorMentorships")
+  sessions        MentorSession[]  @relation("MentorSessions")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("mentor_profiles")
+}
+
+model Mentorship {
+  id              String   @id @default(cuid())
+  mentorId        String
+  mentor          MentorProfile @relation("MentorMentorships", fields: [mentorId], references: [id], onDelete: Cascade)
+  menteeUserId    String
+  programType     String   // "90_day", "6_month", "annual", "open_ended"
+  status          String   @default("pending") // "pending", "active", "completed", "cancelled"
+  goals           String[] // Mentee's goals for this mentorship
+  focusAreas      String[] // ["property_analysis", "financing", "negotiation"]
+  startDate       DateTime?
+  endDate         DateTime?
+  completedAt     DateTime?
+
+  // Progress tracking
+  progressNotes   String?
+  milestones      String[] // Completed milestones
+  rating          Int?     // 1-5, mentee rates at end
+  review          String?  // Mentee review text
+
+  // Relations
+  sessions        MentorSession[]
+  checkIns        MentorCheckIn[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([mentorId])
+  @@index([menteeUserId])
+  @@map("mentorships")
+}
+
+model MentorSession {
+  id              String   @id @default(cuid())
+  mentorId        String
+  mentor          MentorProfile @relation("MentorSessions", fields: [mentorId], references: [id], onDelete: Cascade)
+  mentorshipId    String
+  mentorship      Mentorship @relation(fields: [mentorshipId], references: [id], onDelete: Cascade)
+  scheduledAt     DateTime
+  durationMinutes Int      @default(30)
+  type            String   @default("video") // "video", "phone", "chat", "in_person"
+  status          String   @default("scheduled") // "scheduled", "completed", "cancelled", "no_show"
+  topic           String?
+  notes           String?  // Session notes
+  recordingUrl    String?
+  meetingUrl      String?  // Video call link
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([mentorId])
+  @@index([mentorshipId])
+  @@index([scheduledAt])
+  @@map("mentor_sessions")
+}
+
+model MentorCheckIn {
+  id              String   @id @default(cuid())
+  mentorshipId    String
+  mentorship      Mentorship @relation(fields: [mentorshipId], references: [id], onDelete: Cascade)
+  submittedBy     String   // userId
+  type            String   // "weekly", "milestone", "progress"
+  content         String
+  goalsProgress   String?  // JSON - progress on each goal
+  challenges      String?
+  nextSteps       String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([mentorshipId])
+  @@map("mentor_check_ins")
+}

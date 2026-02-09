@@ -1,0 +1,71 @@
+{
+  "name": "vor-platform",
+  "version": "1.0.0",
+  "description": "VÖR - Women-Centered Real Estate & Generational Wealth Super App",
+  "private": true,
+  "workspaces": [
+    "web",
+    "api",
+    "mobile",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "cd web && npm run dev",
+    "dev:api": "cd api && npm run dev",
+    "dev:mobile": "cd mobile && npm start",
+    "build": "npm run build:api && npm run build:web",
+    "build:web": "cd web && npm run build",
+    "build:api": "cd api && npm run build",
+    "lint": "npm run lint:web && npm run lint:api",
+    "lint:web": "cd web && npm run lint",
+    "lint:api": "cd api && npm run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "npm run test:api && npm run test:web",
+    "test:api": "cd api && npm test --if-present",
+    "test:web": "cd web && npm test --if-present",
+    "db:migrate": "cd api && npx prisma migrate dev",
+    "db:studio": "cd api && npx prisma studio",
+    "db:generate": "cd api && npx prisma generate",
+    "db:seed": "cd api && npx prisma db seed",
+    "db:reset": "cd api && npx prisma migrate reset",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "clean": "rm -rf node_modules web/node_modules api/node_modules mobile/node_modules",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-define-config": "^2.1.0",
+    "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "author": "VÖR Team",
+  "license": "UNLICENSED"
+}
