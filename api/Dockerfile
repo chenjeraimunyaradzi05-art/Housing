@@ -18,7 +18,7 @@ COPY api/package.json ./api/
 COPY shared/package.json ./shared/
 
 # Install production dependencies from root workspace
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 # ========================================
 # Stage 2: Builder
@@ -37,7 +37,7 @@ COPY api/package.json ./api/
 COPY shared/package.json ./shared/
 
 # Install all dependencies (including dev)
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY api/ ./api/
