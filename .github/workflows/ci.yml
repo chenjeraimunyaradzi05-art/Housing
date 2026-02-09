@@ -64,14 +64,14 @@ jobs:
         NEXT_PUBLIC_API_URL: ${{ vars.API_URL || 'https://api.vor.com' }}
 
     - name: Upload Web build artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: web-build
         path: web/.next
         retention-days: 7
 
     - name: Upload API build artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: api-build
         path: api/dist
