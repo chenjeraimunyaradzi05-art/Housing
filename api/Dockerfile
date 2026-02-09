@@ -4,33 +4,33 @@
 # ========================================
 # Stage 1: Dependencies
 # ========================================
-FROM node:20-alpine AS deps
+FROM node:22.12-alpine AS deps
 WORKDIR /app
 
 # Install dependencies needed for native modules
 RUN apk add --no-cache libc6-compat openssl
 
 # Copy package files
-COPY api/package*.json ./api/
-COPY shared/package*.json ./shared/
+COPY package.json package-lock.json ./
+COPY api/package.json ./api/
+COPY shared/package.json ./shared/
 
-# Install dependencies
-WORKDIR /app/api
-RUN npm ci --only=production
+# Install production dependencies from root workspace
+RUN npm ci --omit=dev
 
 # ========================================
 # Stage 2: Builder
 # ========================================
-FROM node:20-alpine AS builder
+FROM node:22.12-alpine AS builder
 WORKDIR /app
 
 # Install dependencies needed for Prisma
 RUN apk add --no-cache libc6-compat openssl
 
 # Copy all package files
-COPY package*.json ./
-COPY api/package*.json ./api/
-COPY shared/package*.json ./shared/
+COPY package.json package-lock.json ./
+COPY api/package.json ./api/
+COPY shared/package.json ./shared/
 
 # Install all dependencies (including dev)
 RUN npm ci
@@ -49,7 +49,7 @@ RUN npm run build
 # ========================================
 # Stage 3: Runner
 # ========================================
-FROM node:20-alpine AS runner
+FROM node:22.12-alpine AS runner
 WORKDIR /app
 
 # Set production environment
@@ -63,6 +63,7 @@ RUN adduser --system --uid 1001 vor
 RUN apk add --no-cache libc6-compat openssl
 
 # Copy built application
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/api/node_modules ./api/node_modules
 COPY --from=builder /app/api/dist ./api/dist
 COPY --from=builder /app/api/prisma ./api/prisma
