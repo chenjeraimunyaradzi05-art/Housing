@@ -7,6 +7,8 @@
 FROM node:22.12-alpine AS deps
 WORKDIR /app
 
+ENV HUSKY=0
+
 # Install dependencies needed for native modules
 RUN apk add --no-cache libc6-compat openssl
 
@@ -23,6 +25,8 @@ RUN npm ci --omit=dev
 # ========================================
 FROM node:22.12-alpine AS builder
 WORKDIR /app
+
+ENV HUSKY=0
 
 # Install dependencies needed for Prisma
 RUN apk add --no-cache libc6-compat openssl
