@@ -50,7 +50,7 @@
     "cypress": "^15.9.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.5",
-    "eslint-plugin-storybook": "^10.2.1",
+    "eslint-plugin-storybook": "^10.2.7",
     "jsdom": "^27.4.0",
     "playwright": "^1.58.0",
     "storybook": "^10.2.1",
